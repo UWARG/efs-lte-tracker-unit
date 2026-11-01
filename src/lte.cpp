@@ -9,11 +9,13 @@
 // keep the modem here so main only needs our lte functions
 static TinyGsm modem(Serial1);
 
+// first registration can take a while so keep this easy to adjust
+constexpr unsigned long networkTimeoutMs = 180000;
+
 void lteSetup() {
   Serial1.begin(115200, SERIAL_8N1, 20, 21); // esp rx, tx
   Serial.println("\nstarting lte uart check");
   Serial.println("the modem needs to be powered on already");
-
 
   // tinygsm sends at and retries for us while the modem finishes booting
   if (!modem.testAT(10000)) {
@@ -28,8 +30,6 @@ void lteSetup() {
     return;
   }
 
-  
-
   Serial.println("tinygsm setup passed");
   Serial.print("modem: ");
   Serial.println(modem.getModemInfo());
@@ -39,10 +39,24 @@ void lteSetup() {
   if (sim == SIM_READY) {
     Serial.println("sim ready");
   } else if (sim == SIM_LOCKED) {
-    Serial.println("lock");
+    Serial.println("sim locked");
+    return;
   } else {
     Serial.println("sim not ready");
+    return;
   }
+
+  // show the signal before waiting so we have something useful if registration fails
+  Serial.print("signal quality ");
+  Serial.println(modem.getSignalQuality());
+
+  // registration checks the carrier connection without opening a data session
+  Serial.println("waiting for network registration");
+  if (!modem.waitForNetwork(networkTimeoutMs)) {
+    Serial.println("network registration timed out");
+    return;
+  }
+  Serial.println("registered on network");
   Serial.println("AT commands below");
 }
 
