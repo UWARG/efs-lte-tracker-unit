@@ -1,5 +1,5 @@
 ## pinout
-
+test
 pins are gpio20 for rx and gpio21 for tx for modem
 
 ## references
