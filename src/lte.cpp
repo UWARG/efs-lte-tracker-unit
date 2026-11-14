@@ -10,18 +10,31 @@
 static TinyGsm modem(Serial1);
 static TinyGsmClient client(modem);
 
-// first registration can take a while 
-constexpr unsigned long networkTimeoutMs = 180000;
+/
+constexpr unsigned long networkTimeoutMs = 60000;
+constexpr uint8_t modemPowerKeyPin = 0;
+constexpr unsigned long powerKeyPulseMs = 1200; //the power on min is 1.5s
+constexpr unsigned long modemBootWaitMs = 3000; //2.5s uart wait
 
 bool lteSetup(const char *apn) {
+
+  digitalWrite(modemPowerKeyPin, LOW);
+  pinMode(modemPowerKeyPin, OUTPUT);
   Serial1.begin(115200, SERIAL_8N1, 20, 21); // esp rx, tx
-  Serial.println("\nstarting lte uart check");
-  Serial.println("the modem needs to be powered on already");
+
+  //init for the modem to run 
+  if (!modem.testAT(10000)) {
+    digitalWrite(modemPowerKeyPin, HIGH);
+    delay(powerKeyPulseMs);
+    digitalWrite(modemPowerKeyPin, LOW);
+    delay(modemBootWaitMs);
+  }
+
 
   // tinygsm sends at and retries for us while the modem finishes booting
   if (!modem.testAT(10000)) {
     Serial.println("uart check failed");
-    return false;
+    // return false;
   }
   Serial.println("uart check passed");
 
