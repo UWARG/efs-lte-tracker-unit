@@ -1,8 +1,8 @@
 #include <Arduino.h>
 #include "gps_external.hpp"
 
-#define LTE_QUEUE_SIZE 50
-#define SD_CARD_QUEUE_SIZE 30
+#define LTE_QUEUE_SIZE 5
+#define SD_CARD_QUEUE_SIZE 5
 
 // GPS Task data
 TaskHandle_t gpsExtTaskHandle = NULL;
@@ -34,6 +34,4 @@ void setup() {
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
-    delay(2000);
 }
