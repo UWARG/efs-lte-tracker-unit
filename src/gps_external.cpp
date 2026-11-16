@@ -311,9 +311,9 @@ ubx_ack_msg getUbxAck(ubx_msg_class msgClass, ubx_msg_id msgId) {
 }
 
 gps_data_t processNavPvtFrame(ubxFrame_t * frame) { 
-    gps_data_t data;
-    data.isNatPvtMsg = true;
+    gps_data_t data{};
     data.isInvalid = false;
+    data.isNatPvtMsg = true;
 
     // Check if frame is not a NAV-PVT-MSG frame
     if(frame->msgIdentifiers[0] != UBX_NAV_PVT_MSG_CLASS || frame->msgIdentifiers[1] != UBX_NAV_PVT_MSG_ID) {
@@ -334,8 +334,7 @@ gps_data_t processNavPvtFrame(ubxFrame_t * frame) {
     data.gnssFixOK = (frame->payload[21] & 0x01) == 0x01; // Get 0th bit of 21st byte (gnssFixOK)
     if(!data.isValidTime || !data.gnssFixOK) {
         if(!data.isValidTime) {
-            Serial.print("Invalid time");
-            Serial.println(frame->payload[11] & 0x03);
+            Serial.println("Invalid time");
         } else{
             Serial.println("Invalid GNSS fix");
         }
@@ -344,22 +343,33 @@ gps_data_t processNavPvtFrame(ubxFrame_t * frame) {
     }
 
     // Get date
-    data.year = frame->payload[4];
-    data.month = frame->payload[6];
-    data.day = frame->payload[7];
+    std::memcpy(&data.year, &frame->payload[4], 2);
+    std::memcpy(&data.month, &frame->payload[6], 1);
+    std::memcpy(&data.day, &frame->payload[7], 1);
 
     // Get time
-    data.hour = frame->payload[8];
-    data.min = frame->payload[9];
-    data.second = frame->payload[10];
-    data.nano = frame->payload[16];
+    std::memcpy(&data.hour, &frame->payload[8], 1);
+    std::memcpy(&data.min, &frame->payload[9], 1);
+    std::memcpy(&data.second, &frame->payload[10], 1);
+    int32_t tempNano;
+    std::memcpy(&tempNano, &frame->payload[16], 4);
+    if(tempNano >= 0) { // Ignore negative nano values. Guarantees precision of time to at least the hundredth of a second
+        data.nano = tempNano;
+    } else {
+        data.nano = 0;
+    }
 
     // Get position
-    std::memcpy(&data.lon, &frame->payload[24], 4);
-    std::memcpy(&data.lat, &frame->payload[28], 4);
+    int32_t tempLon, tempLat;
+    std::memcpy(&tempLon, &frame->payload[24], 4);
+    std::memcpy(&tempLat, &frame->payload[28], 4);
+    data.lon = tempLon * 1e-7;
+    data.lat = tempLat * 1e-7;
 
     // Get pDOP
-    std::memcpy(&data.pdop, &frame->payload[76], 2);
+    uint16_t tempPdop;
+    std::memcpy(&tempPdop, &frame->payload[76], 2);
+    data.pdop = tempPdop * 1e-2;
 
     return data;
 }
