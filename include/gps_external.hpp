@@ -1,8 +1,8 @@
 #pragma once
 #include <Arduino.h>
 
-#define RXD2 4 // Define RX pin
-#define TXD2 5 // Define TX pin
+#define RXD2 5 // Define RX pin
+#define TXD2 4 // Define TX pin
 
 #define GPS_BAUD 115200 // Default baud rate for sensor
 
