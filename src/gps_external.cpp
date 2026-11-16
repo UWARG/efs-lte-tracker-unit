@@ -184,7 +184,6 @@ ubxFrame_t * getFrameFromExternalGps(int maxTotalTime) {
             break;
         } else if(gpsExternalSerial.available() > 0) {
             incomingBuff = gpsExternalSerial.read();
-            Serial.println(incomingBuff);
 
             switch(currState) {
                 case WAIT_PREAMBLE_1:
@@ -324,24 +323,36 @@ gps_data_t processNavPvtFrame(ubxFrame_t * frame) {
 
     // Check if length is incorrect for a NAV-PVT-MSG frame
     if(frame->length != 92) {
+        Serial.print("Invalid length: ");
+        Serial.println(frame->length);
+        data.isInvalid = true;
+        return data;
+    }
+    
+    // Check if time and date received are invalid
+    data.isValidTime = (frame->payload[11] & 0x03) == 0x03; // Get 0th and 1st bit of 11th byte (validDate and validTime)
+    data.gnssFixOK = (frame->payload[21] & 0x01) == 0x01; // Get 0th bit of 21st byte (gnssFixOK)
+    if(!data.isValidTime || !data.gnssFixOK) {
+        if(!data.isValidTime) {
+            Serial.print("Invalid time");
+            Serial.println(frame->payload[11] & 0x03);
+        } else{
+            Serial.println("Invalid GNSS fix");
+        }
         data.isInvalid = true;
         return data;
     }
 
-    // Check if time and date received are invalid
-    data.isValidTime = frame->payload[11] & 0x03; // Get 0th and 1st bit of 11th byte (validDate and validTime)
-    data.gnssFixOK = frame->payload[21] & 0x01; // Get 0th bit of 21st byte (gnssFixOK)
-    if(data.isValidTime != 0b11 || !data.gnssFixOK) {
-        data.isInvalid = true;
-        return data;
-    }
+    // Get date
+    data.year = frame->payload[4];
+    data.month = frame->payload[6];
+    data.day = frame->payload[7];
 
     // Get time
     data.hour = frame->payload[8];
     data.min = frame->payload[9];
     data.second = frame->payload[10];
-
-    // !!! TODO: Populate nano, year, month, and day values of data !!!
+    data.nano = frame->payload[16];
 
     // Get position
     std::memcpy(&data.lon, &frame->payload[24], 4);
@@ -357,7 +368,7 @@ void gpsExternalTask(void *parameters) {
     uint32_t command = STOP_TRACKING;
     QueueHandle_t gpsToLTEQueue = ((gpsExternalDataQueues_t *)parameters)->gpsToLTEQueue;
     QueueHandle_t gpsToSDCardQueue = ((gpsExternalDataQueues_t *)parameters)->gpsToSDCardQueue;
-
+    
     while(1) {
         switch(command) {
             case STOP_TRACKING:
@@ -398,12 +409,12 @@ void gpsExternalTask(void *parameters) {
                             gps_data_t tempData; 
                             xQueueReceive(gpsToLTEQueue, &tempData, 0);   
                             if(xQueueSend(gpsToLTEQueue, data, 0) == pdPASS) {
-                                Serial.println("Sent frame to LTE Queue!");
+                                //Serial.println("Queue full! Removed oldest value and sent frame to LTE Queue!");
                             } else {
-                                Serial.println("Queue full! Couldn't send frame to LTE Queue.");
+                                Serial.println("Queue full! Removed oldest value but couldn't send frame to LTE Queue.");
                             }
                         } else {
-                            Serial.println("Sent frame to LTE Queue!");
+                            //Serial.println("Sent frame to LTE Queue!");
                         }
 
                         // Add item to SD card queue if there is space
@@ -412,12 +423,12 @@ void gpsExternalTask(void *parameters) {
                             gps_data_t tempData;
                             xQueueReceive(gpsToSDCardQueue, &tempData, 0);   
                             if(xQueueSend(gpsToSDCardQueue, data, 0) == pdPASS) {
-                                Serial.println("Sent frame to SD card Queue!");
+                                //Serial.println("Queue full! Removed oldest value and sent frame to SD card Queue!");
                             } else {
-                                Serial.println("Queue full! Couldn't send frame to SD card Queue.");
+                                Serial.println("Queue full! Removed oldest value but couldn't send frame to SD card Queue.");
                             }
                         } else {
-                            Serial.println("Sent frame to SD card Queue!");
+                            //Serial.println("Sent frame to SD card Queue!");
                         }
                     }
 

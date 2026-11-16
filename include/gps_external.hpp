@@ -57,17 +57,19 @@ enum gpsExternalCommand {
 };
 
 typedef struct gps_data {
-    int32_t lon;
-    int32_t lat;
+    int32_t lon; // Format: Q2.7
+    int32_t lat; // Format: Q2.7
     uint8_t gnssFixOK; // Is position valid
 
+    // Time is in UTC
     uint16_t year;
     uint8_t month;
     uint8_t day;
     uint8_t hour;
     uint8_t min;
     uint8_t second;
-    int32_t nano; // Fraction of second, range -1e9 .. 1e9 (UTC)
+    int32_t nano; // Fraction of second, range -1e9 .. 1e9 (UTC). Correction value to time to get time resolution in the nanoseconds
+
     uint8_t isValidTime; // Is time valid
 
     uint16_t pdop;
