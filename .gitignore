@@ -72,3 +72,5 @@ Testing/
 
 
 .vscode
+
+/include/mqtt_config.h

@@ -3,5 +3,6 @@
 #include <Client.h>
 
 
-void mqttSetup(Client &client);
+bool mqttSetup(Client &client);
 void mqttLoop();
+void mqttPause();
