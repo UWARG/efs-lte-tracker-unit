@@ -10,18 +10,13 @@
 static TinyGsm modem(Serial1);
 static TinyGsmClient client(modem);
 
-/
+
 constexpr unsigned long networkTimeoutMs = 60000;
 constexpr uint8_t modemPowerKeyPin = 0;
 constexpr unsigned long powerKeyPulseMs = 1200; //the power on min is 1.5s
 constexpr unsigned long modemBootWaitMs = 3000; //2.5s uart wait
 
-bool lteSetup(const char *apn) {
-
-  digitalWrite(modemPowerKeyPin, LOW);
-  pinMode(modemPowerKeyPin, OUTPUT);
-  Serial1.begin(115200, SERIAL_8N1, 20, 21); // esp rx, tx
-
+static bool initModem() {
   //init for the modem to run 
   if (!modem.testAT(10000)) {
     digitalWrite(modemPowerKeyPin, HIGH);
@@ -63,6 +58,26 @@ bool lteSetup(const char *apn) {
   // show the signal before waiting so we have something useful if registration fails
   Serial.print("signal quality ");
   Serial.println(modem.getSignalQuality());
+  return true;
+}
+
+bool lteSetup(const char *apn) {
+  static bool uartStarted = false;
+  static bool modemReady = false;
+
+  if (!uartStarted) {
+    digitalWrite(modemPowerKeyPin, LOW);
+    pinMode(modemPowerKeyPin, OUTPUT);
+    Serial1.begin(115200, SERIAL_8N1, 20, 21); // esp rx, tx
+    uartStarted = true;
+  }
+
+  if (!modemReady || !modem.testAT(1000)) {
+    modemReady = initModem();
+    if (!modemReady) {
+      return false;
+    }
+  }
 
   // registration checks the carrier connection without opening a data session
   Serial.println("waiting for network registration");
@@ -75,7 +90,7 @@ bool lteSetup(const char *apn) {
 
   // registration alone is not enough to send data
   Serial.println("opening cellular data");
-  if (!modem.gprsConnect(apn) || !modem.isGprsConnected()) {
+  if (!modem.isGprsConnected() && (!modem.gprsConnect(apn) || !modem.isGprsConnected())) {
     Serial.println("cellular data check failed");
     return false;
   }
@@ -84,6 +99,10 @@ bool lteSetup(const char *apn) {
   Serial.println(modem.localIP());
   Serial.println("lte data ready");
   return true;
+}
+
+bool lteIsConnected() {
+  return modem.isNetworkConnected() && modem.isGprsConnected();
 }
 
 void lteLoop() {
