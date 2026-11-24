@@ -2,8 +2,8 @@
 #include "driver/uart.h"
 #include <cstring>
 
-// Create instance of HardwareSerial class for Serial 1 
-HardwareSerial gpsExternalSerial(1);
+// use uart0 for gps so lte can keep uart1
+HardwareSerial &gpsExternalSerial = Serial0;
 
 ubxFrame_t * getUbxConfigFrame(ubx_config_data_key key, uint8_t * data, uint16_t size) {
     // Setup config message to set UART1 protocol to UBX
