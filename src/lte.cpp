@@ -29,7 +29,7 @@ static bool initModem() {
   // tinygsm sends at and retries for us while the modem finishes booting
   if (!modem.testAT(10000)) {
     Serial.println("uart check failed");
-    // return false;
+    return false;
   }
   Serial.println("uart check passed");
 

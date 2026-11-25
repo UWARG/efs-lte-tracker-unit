@@ -11,6 +11,7 @@ constexpr unsigned long lteRetryMaxMs = 60000;
 
 static gpsExternalDataQueues_t gpsQueues;
 static bool lteReady = false;
+static bool mqttReady = false;
 static unsigned long lastLteCheckMs = 0;
 static unsigned long lteRetryMs = 0;
 
@@ -68,13 +69,18 @@ void setup() {
     delay(10);
   }
 
-  mqttSetup(lteClient());
+  mqttReady = mqttSetup(lteClient());
+  if (!mqttReady) {
+    Serial.println("mqtt disabled; fill in include/mqtt_config.h and rebuild");
+  }
 }
 
 void loop() {
   if (lteReady) {
     lteLoop();
-    mqttLoop();
+    if (mqttReady) {
+      mqttLoop();
+    }
     if (millis() - lastLteCheckMs >= lteCheckIntervalMs) {
       lteReady = lteIsConnected();
       if (!lteReady) {
