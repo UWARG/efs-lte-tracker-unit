@@ -13,6 +13,8 @@
 #define UBX_PREA_1 0xb5 // UBX frame preamble 1
 #define UBX_PREA_2 0x62 // UBX frame preamble 2
 
+#define GPS_PROBE_COOLDOWN 200 // Time between successful GPS data probing events
+
 enum ubx_ack_msg {
     UBX_ACK_RECEIVED,
     UBX_NAK_RECEIVED,
@@ -36,13 +38,17 @@ enum ubx_msg_id {
 enum ubx_config_data_key {
     CFG_UART1OUTPROT_UBX_KEY = 0x10740001,
     CFG_UART1OUTPROT_NMEA_KEY = 0x10740002,
-    CFG_MSGOUT_UBX_NAV_PVT_UART1_KEY = 0x20910007
+    CFG_MSGOUT_UBX_NAV_PVT_UART1_KEY = 0x20910007,
+    CFG_RATE_MEAS_KEY = 0x30210001,
+    CFG_RATE_NAV_KEY = 0x30210002
 };
 
 enum ubx_config_data_value {
     CFG_UART1OUTPROT_UBX_ENA = 1,
     CFG_UART1OUTPROT_NMEA_DISABLE = 0,
-    CFG_MSGOUT_UBX_NAV_PVT_UART1_ENA = 1
+    CFG_MSGOUT_UBX_NAV_PVT_UART1_ENA = 1,
+    CFG_RATE_MEAS_VAL = 200, // ms
+    CFG_RATE_NAV_VAL = 1
 };
 
 typedef struct gpsExternalDataParams {
@@ -59,7 +65,6 @@ enum gpsExternalCommand {
 typedef struct gps_data {
     double lon; // Scale: 1e-7 degrees
     double lat; // Scale: 1e-7 degrees
-    bool gnssFixOK; // Is position valid
 
     // Time format: UTC
     uint16_t year;
@@ -69,14 +74,22 @@ typedef struct gps_data {
     uint8_t min;
     uint8_t second;
     int32_t nano; // Stored range: 0 to ~994999999 ns. Negative nano values (UBX corrections) are set to 0
-    
-    bool isValidTime; // Is time valid
 
     double pdop; // Resolution: 1e-2
-
-    bool isInvalid;
-    bool isNatPvtMsg;
 } gps_data_t;
+
+typedef struct process_nav_pvt_res {
+    bool gnssFixOK; // Is position valid
+    bool isValidTime; // Is time valid
+    bool isInvalid; // Is frame valid
+    bool isNatPvtMsg; // Is NAV PVT frame
+
+    gps_data_t * data;
+
+    ~process_nav_pvt_res() {
+        delete data;
+    }
+} process_nav_pvt_res_t;
 
 enum uartState {
     WAIT_PREAMBLE_1,
@@ -190,7 +203,7 @@ ubx_ack_msg getUbxAck(ubx_msg_class msgClass, ubx_msg_id msgId);
  * - GPS data if frame was a valid NAV-PVT frame
  * - Whether frame was invalid/not a NAV-PVT frame via data's "isInvalid" and "isNatPvtMsg" bools
  */
-gps_data_t processNavPvtFrame(ubxFrame_t * frame);
+process_nav_pvt_res_t processNavPvtFrame(ubxFrame_t * frame);
 
 /**
  * @brief External sensor FreeRTOS task. Performs the following operations:

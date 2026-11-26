@@ -5,7 +5,7 @@
 // Create instance of HardwareSerial class for Serial 1 
 HardwareSerial gpsExternalSerial(1);
 
-ubxFrame_t * getUbxConfigFrame(ubx_config_data_key key, uint8_t * data, uint16_t size) {
+ubxFrame_t * getUbxConfigFrame(ubx_config_data_key key, void * data, uint16_t size) {
     // Setup config message to set UART1 protocol to UBX
     ubxFrame_t * configFrame = new ubxFrame_t{};
     configFrame->prea1 = UBX_PREA_1;
@@ -57,12 +57,15 @@ void sendMsgToGPS(ubxFrame_t * frame) {
 
 bool configGpsExternal() {
     // Set up frames to send
+    size_t msgCnt = 5;
     uint8_t frameData[3] = {CFG_UART1OUTPROT_UBX_ENA, CFG_MSGOUT_UBX_NAV_PVT_UART1_ENA, CFG_UART1OUTPROT_NMEA_DISABLE};
-    ubxFrame_t * enableUbxFrame = getUbxConfigFrame(CFG_UART1OUTPROT_UBX_KEY, &frameData[0], 1);
-    ubxFrame_t * enableNavPvtFrame = getUbxConfigFrame(CFG_MSGOUT_UBX_NAV_PVT_UART1_KEY, &frameData[1], 1);
-    ubxFrame_t * disableNmeaFrame = getUbxConfigFrame(CFG_UART1OUTPROT_NMEA_KEY, &frameData[2], 1);
-    ubxFrame_t * messages[] = {enableUbxFrame, enableNavPvtFrame, disableNmeaFrame};
-    size_t msgCnt = 3;
+    uint16_t navConfigData[2] = {CFG_RATE_MEAS_VAL, CFG_RATE_NAV_VAL};
+    ubxFrame_t * enableUbxFrame = getUbxConfigFrame(CFG_UART1OUTPROT_UBX_KEY, &frameData[0], sizeof(uint8_t));
+    ubxFrame_t * enableNavPvtFrame = getUbxConfigFrame(CFG_MSGOUT_UBX_NAV_PVT_UART1_KEY, &frameData[1], sizeof(uint8_t));
+    ubxFrame_t * disableNmeaFrame = getUbxConfigFrame(CFG_UART1OUTPROT_NMEA_KEY, &frameData[2], sizeof(uint8_t));
+    ubxFrame_t * setRateMeas = getUbxConfigFrame(CFG_RATE_MEAS_KEY, &navConfigData[0], sizeof(uint16_t));
+    ubxFrame_t * setRateNav = getUbxConfigFrame(CFG_RATE_NAV_KEY, &navConfigData[1], sizeof(uint16_t));
+    ubxFrame_t * messages[] = {enableUbxFrame, enableNavPvtFrame, disableNmeaFrame, setRateMeas, setRateNav};
     ubx_ack_msg ackMsg;
     bool success = true;
 
@@ -310,68 +313,70 @@ ubx_ack_msg getUbxAck(ubx_msg_class msgClass, ubx_msg_id msgId) {
     }
 }
 
-gps_data_t processNavPvtFrame(ubxFrame_t * frame) { 
-    gps_data_t data{};
-    data.isInvalid = false;
-    data.isNatPvtMsg = true;
+process_nav_pvt_res_t processNavPvtFrame(ubxFrame_t * frame) { 
+    process_nav_pvt_res_t res{};
+    gps_data_t * data = new gps_data_t;
+    res.isInvalid = false;
+    res.isNatPvtMsg = true;
 
     // Check if frame is not a NAV-PVT-MSG frame
     if(frame->msgIdentifiers[0] != UBX_NAV_PVT_MSG_CLASS || frame->msgIdentifiers[1] != UBX_NAV_PVT_MSG_ID) {
-        data.isNatPvtMsg = false;
-        return data;
+        res.isNatPvtMsg = false;
+        return res;
     }
 
     // Check if length is incorrect for a NAV-PVT-MSG frame
     if(frame->length != 92) {
         Serial.print("Invalid length: ");
         Serial.println(frame->length);
-        data.isInvalid = true;
-        return data;
+        res.isInvalid = true;
+        return res;
     }
     
     // Check if time and date received are invalid
-    data.isValidTime = (frame->payload[11] & 0x03) == 0x03; // Get 0th and 1st bit of 11th byte (validDate and validTime)
-    data.gnssFixOK = (frame->payload[21] & 0x01) == 0x01; // Get 0th bit of 21st byte (gnssFixOK)
-    if(!data.isValidTime || !data.gnssFixOK) {
-        if(!data.isValidTime) {
+    res.isValidTime = (frame->payload[11] & 0x03) == 0x03; // Get 0th and 1st bit of 11th byte (validDate and validTime)
+    res.gnssFixOK = (frame->payload[21] & 0x01) == 0x01; // Get 0th bit of 21st byte (gnssFixOK)
+    if(!res.isValidTime || !res.gnssFixOK) {
+        if(!res.isValidTime) {
             Serial.println("Invalid time");
         } else{
             Serial.println("Invalid GNSS fix");
         }
-        data.isInvalid = true;
-        return data;
+        res.isInvalid = true;
+        return res;
     }
 
     // Get date
-    std::memcpy(&data.year, &frame->payload[4], 2);
-    std::memcpy(&data.month, &frame->payload[6], 1);
-    std::memcpy(&data.day, &frame->payload[7], 1);
+    std::memcpy(&data->year, &frame->payload[4], 2);
+    std::memcpy(&data->month, &frame->payload[6], 1);
+    std::memcpy(&data->day, &frame->payload[7], 1);
 
     // Get time
-    std::memcpy(&data.hour, &frame->payload[8], 1);
-    std::memcpy(&data.min, &frame->payload[9], 1);
-    std::memcpy(&data.second, &frame->payload[10], 1);
+    std::memcpy(&data->hour, &frame->payload[8], 1);
+    std::memcpy(&data->min, &frame->payload[9], 1);
+    std::memcpy(&data->second, &frame->payload[10], 1);
     int32_t tempNano;
     std::memcpy(&tempNano, &frame->payload[16], 4);
     if(tempNano >= 0) { // Ignore negative nano values. Guarantees precision of time to at least the hundredth of a second
-        data.nano = tempNano;
+        data->nano = tempNano;
     } else {
-        data.nano = 0;
+        data->nano = 0;
     }
 
     // Get position
     int32_t tempLon, tempLat;
     std::memcpy(&tempLon, &frame->payload[24], 4);
     std::memcpy(&tempLat, &frame->payload[28], 4);
-    data.lon = tempLon * 1e-7;
-    data.lat = tempLat * 1e-7;
+    data->lon = tempLon * 1e-7;
+    data->lat = tempLat * 1e-7;
 
     // Get pDOP
     uint16_t tempPdop;
     std::memcpy(&tempPdop, &frame->payload[76], 2);
-    data.pdop = tempPdop * 1e-2;
+    data->pdop = tempPdop * 1e-2;
 
-    return data;
+    res.data = data;
+    return res;
 }
 
 void gpsExternalTask(void *parameters) {
@@ -398,62 +403,67 @@ void gpsExternalTask(void *parameters) {
             case RUN_TRACKING:
                 // Get GPS frame from UART stream
                 ubxFrame_t * frame = getFrameFromExternalGps(GPS_MSG_TIMEOUT);
+                bool success = false;
 
                 // Check if frame was successfully read
                 if(frame->isTimeout) {
                     Serial.println("Frame read timed out! Can't process frame.");
                 } else {
                     // If frame was successfully read, process it
-                    gps_data_t * data = new gps_data_t;
-                    *data = processNavPvtFrame(frame);
+                    process_nav_pvt_res_t * res = new process_nav_pvt_res_t;
+                    *res = processNavPvtFrame(frame);
 
                     // If data is valid, send to LTE and SD card queues
-                    if(!data->isNatPvtMsg) {
+                    if(!res->isNatPvtMsg) {
                         Serial.println("Not a NAV-PVT-MSG frame, ignored frame.");
-                    } else if (data->isInvalid) {
+                    } else if (res->isInvalid) {
                         Serial.println("Invalid data! Did not add to queue.");
                     } else {
                         // Add item to LTE queue if there is space
                         // If there isn't space, delete oldest value, add new value
-                        if(xQueueSend(gpsToLTEQueue, data, 0) != pdPASS) {
+                        if(xQueueSend(gpsToLTEQueue, res->data, 0) != pdPASS) {
                             gps_data_t tempData; 
                             xQueueReceive(gpsToLTEQueue, &tempData, 0);   
-                            if(xQueueSend(gpsToLTEQueue, data, 0) == pdPASS) {
+                            if(xQueueSend(gpsToLTEQueue, res->data, 0) == pdPASS) {
                                 //Serial.println("Queue full! Removed oldest value and sent frame to LTE Queue!");
+                                success = true;
                             } else {
                                 Serial.println("Queue full! Removed oldest value but couldn't send frame to LTE Queue.");
                             }
                         } else {
                             //Serial.println("Sent frame to LTE Queue!");
+                            success = true;
                         }
 
                         // Add item to SD card queue if there is space
                         // If there isn't space, delete oldest value, add new value
-                        if(xQueueSend(gpsToSDCardQueue, data, 0) != pdPASS) {
+                        if(xQueueSend(gpsToSDCardQueue, res->data, 0) != pdPASS) {
                             gps_data_t tempData;
                             xQueueReceive(gpsToSDCardQueue, &tempData, 0);   
-                            if(xQueueSend(gpsToSDCardQueue, data, 0) == pdPASS) {
+                            if(xQueueSend(gpsToSDCardQueue, res->data, 0) == pdPASS) {
                                 //Serial.println("Queue full! Removed oldest value and sent frame to SD card Queue!");
+                                success = true;
                             } else {
                                 Serial.println("Queue full! Removed oldest value but couldn't send frame to SD card Queue.");
                             }
                         } else {
                             //Serial.println("Sent frame to SD card Queue!");
+                            success = true;
                         }
                     }
 
-                    // Cleanup data pointer
-                    delete data;
+                    // Cleanup res pointer
+                    delete res;
                 }
+
+                // Cleanup frame pointer
+                delete frame;
 
                 // Check if main sent STOP_TRACKING command
                 if(xTaskNotifyWait(0x00, ULONG_MAX, &command,0) && command == STOP_TRACKING) {
                     stopGpsExternal();
                     Serial.println("Stop tracking command received!");
                 }
-
-                // Cleanup frame pointer
-                delete frame;
                 
                 break;
         }
